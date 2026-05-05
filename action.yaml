@@ -1,0 +1,111 @@
+name: Setup yt-dlp
+description: Setup/Install yt-dlp (a youtube-dl fork) for GitHub Actions
+branding:
+  icon: play-circle
+  color: red
+inputs:
+  ffmpeg:
+    description: Install yt-dlp/FFmpeg-Builds for yt-dlp
+    default: true
+  aria2:
+    description: Use aria2 by writing to yt-dlp config
+    default: true
+  ejs-node:
+    description: Use EJS Node by writing to yt-dlp config
+    default: true
+  version:
+    description: yt-dlp version
+    default: latest
+  nightly:
+    description: yt-dlp nightly
+    default: false
+  token:
+    description: GitHub token to avoid API rate limiting
+    default: ${{ github.token }}
+    
+runs:
+  using: composite
+  steps:
+    - name: Install yt-dlp/FFmpeg-Builds
+      if: runner.os != 'macOS' && inputs.ffmpeg != 'false'
+      uses: AnimMouse/setup-yt-dlp/ffmpeg@v3
+      with:
+        token: ${{ inputs.token }}
+        
+    - name: Get yt-dlp version for Unix-like
+      id: version-unix-like
+      if: runner.os == 'Linux' || runner.os == 'macOS'
+      shell: bash
+      run: $GITHUB_ACTION_PATH/scripts/version/Unix-like.sh
+      env:
+        version: ${{ inputs.version }}
+        nightly: ${{ inputs.nightly }}
+        GITHUB_TOKEN: ${{ inputs.token }}
+        
+    - name: Get yt-dlp version for Windows
+      id: version-windows
+      if: runner.os == 'Windows'
+      shell: pwsh
+      run: '& $env:GITHUB_ACTION_PATH\scripts\version\Windows.ps1'
+      env:
+        version: ${{ inputs.version }}
+        nightly: ${{ inputs.nightly }}
+        GITHUB_TOKEN: ${{ inputs.token }}
+        
+    - name: Restore yt-dlp cache
+      id: cache
+      uses: actions/cache/restore@v5
+      with:
+        path: ${{ runner.tool_cache }}/yt-dlp
+        key: yt-dlp-${{ steps.version-unix-like.outputs.version || steps.version-windows.outputs.version }}-${{ runner.os }}
+        
+    - name: Download yt-dlp for Unix-like
+      if: (runner.os == 'Linux' || runner.os == 'macOS') && ! steps.cache.outputs.cache-hit
+      shell: bash
+      working-directory: ${{ runner.temp }}
+      run: $GITHUB_ACTION_PATH/scripts/download/Unix-like.sh
+      env:
+        version: ${{ steps.version-unix-like.outputs.version }}
+        nightly: ${{ inputs.nightly }}
+        
+    - name: Download yt-dlp for Windows
+      if: runner.os == 'Windows' && ! steps.cache.outputs.cache-hit
+      shell: pwsh
+      working-directory: ${{ runner.temp }}
+      run: '& $env:GITHUB_ACTION_PATH\scripts\download\Windows.ps1'
+      env:
+        version: ${{ steps.version-windows.outputs.version }}
+        nightly: ${{ inputs.nightly }}
+        
+    - name: Install yt-dlp on tool cache
+      uses: AnimMouse/tool-cache@v1
+      with:
+        folder_name: yt-dlp
+        cache_hit: ${{ steps.cache.outputs.cache-hit }}
+        
+    - name: Save yt-dlp cache
+      if: '! steps.cache.outputs.cache-hit'
+      uses: actions/cache/save@v5
+      with:
+        path: ${{ runner.tool_cache }}/yt-dlp
+        key: yt-dlp-${{ steps.version-unix-like.outputs.version || steps.version-windows.outputs.version }}-${{ runner.os }}
+        
+    - name: Enable yt-dlp aria2 for Unix-like
+      if: (runner.os == 'Linux' || runner.os == 'macOS') && inputs.aria2 != 'false'
+      shell: bash
+      run: $GITHUB_ACTION_PATH/scripts/aria2/Unix-like.sh
+      
+    - name: Enable yt-dlp aria2 for Windows
+      if: runner.os == 'Windows' && inputs.aria2 != 'false'
+      shell: pwsh
+      run: '& $env:GITHUB_ACTION_PATH\scripts\aria2\Windows.ps1'
+      
+    - name: Enable yt-dlp EJS Node for Unix-like
+      if: (runner.os == 'Linux' || runner.os == 'macOS') && inputs.ejs-node != 'false'
+      shell: bash
+      run: $GITHUB_ACTION_PATH/scripts/ejs-node/Unix-like.sh
+      
+    - name: Enable yt-dlp EJS Node for Windows
+      if: runner.os == 'Windows' && inputs.ejs-node != 'false'
+      shell: pwsh
+      run: '& $env:GITHUB_ACTION_PATH\scripts\ejs-node\Windows.ps1'
